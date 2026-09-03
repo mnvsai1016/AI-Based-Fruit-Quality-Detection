@@ -1,159 +1,73 @@
-# 🍌 BananaVision — AI-Powered Ripeness Detection
+# 🍌 BananaVision — Technical Documentation & Pipeline Guide
 
-A production-grade web application that uses a **two-stage deep learning pipeline** (Mask R-CNN → MobileNetV2) to detect individual bananas in an image and classify each one's ripeness in real time.
+This folder contains the core application backend, machine learning pipeline, training notebooks, and the web interface for the **AI-Based Fruit Quality Detection** system (currently specialized for bananas).
 
 ---
 
-## Architecture
+## 🛠️ Architecture & Pipeline Overview
+
+The pipeline executes a two-stage deep learning approach to accurately segment and classify bananas from ordinary photos:
 
 ```
-Upload Image → Mask R-CNN Segmentation → Crop Each Banana
-                                              ↓
-                               MobileNetV2 + 5-Transform TTA
-                                              ↓
-                              Ripeness: unripe / ripe / overripe / rotten
+[Input Image] ───► [Mask R-CNN ResNet-50 FPN] ───► [Banana Crops + Masks]
+                                                            │
+                                                            ▼
+                                           [MobileNetV2 Classifier + TTA]
+                                                            │
+                                                            ▼
+                                              [Ripeness Class & Probabilities]
+                                                            │
+                                                            ▼
+                                              [Shelf-Life & Storage Insights]
 ```
 
-| Stage | Model | Output |
-|-------|-------|--------|
-| Segmentation | Mask R-CNN ResNet-50 FPN | Binary masks, bounding boxes, confidence scores |
-| Classification | MobileNetV2 (1280→4) | Ripeness class + confidence + class probabilities |
+### Key Parameters:
+- **Segmentation Confidence Threshold**: `0.90` (Mask R-CNN)
+- **Mask Binarization Threshold**: `0.50`
+- **Minimum Banana Area Filter**: `1500 px²`
+- **Low-Confidence Warning**: Confidence `< 60%`
+- **Test-Time Augmentation (TTA)**: 5 deterministic variants (Center Crop, Horizontal Flip, 280px Scale, +10° Rotation, -10° Rotation)
 
 ---
 
-## Prerequisites
-
-- Python 3.9+
-- CUDA-capable GPU (optional but recommended for speed)
-
----
-
-## Setup
-
-### 1. Clone / place model files
+## 📂 Directory Layout
 
 ```
 Desing_end/
 ├── app/
-│   ├── main.py
-│   ├── pipeline.py
-│   ├── models/
-│   │   ├── banana_maskrcnn_finetuned.pth   ← place here
-│   │   └── banana_mobilenetv2_best.pth     ← place here
+│   ├── main.py                              # FastAPI web server and REST endpoints
+│   ├── pipeline.py                          # Two-stage segmentation & classification pipeline
+│   ├── models/                              # Trained .pth model weight files
+│   │   ├── banana_maskrcnn_finetuned.pth    # Fine-tuned Mask R-CNN model
+│   │   └── banana_mobilenetv2_best.pth      # Best MobileNetV2 classifier
 │   └── static/
-│       └── index.html
-└── requirements.txt
+│       ├── index.html                       # Responsive HTML5/CSS3 frontend
+│       └── samples/                         # Built-in sample test images
+├── BANANA_FINAL_INTEGRATED.ipynb            # Integration & end-to-end testing notebook
+├── Banana_Segmentation_training_code.ipynb  # Mask R-CNN training on custom annotated dataset
+├── banana_ripeness_training_code.ipynb      # MobileNetV2 transfer learning & evaluation
+├── banana_pipeline_integration.ipynb        # Pipeline prototyping notebook
+└── requirements.txt                         # Application dependencies
 ```
 
-The `.pth` files are already present at the root of your workspace — **copy or move them into `app/models/`**:
+---
 
-```powershell
-Copy-Item banana_maskrcnn_finetuned.pth app\models\
-Copy-Item banana_mobilenetv2_best.pth   app\models\
-```
-
-### 2. Install dependencies
+## 🚀 Running the Local Server
 
 ```bash
-pip install -r requirements.txt
-```
-
-> For GPU support, install the CUDA build of PyTorch first:
-> ```bash
-> pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-> ```
-
-### 3. Run the server
-
-```bash
+# 1. Navigate to the app directory
 cd app
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+# 2. Start the Uvicorn server
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 4. Open the browser
-
-```
-http://localhost:8000
-```
+Then visit **http://localhost:8000** in your browser.
 
 ---
 
-## API Reference
+## 🔌 API Endpoints
 
-### `GET /health`
-Returns server status, device (cuda/cpu), and whether models are loaded.
-
-```json
-{ "status": "ok", "device": "cuda", "models_loaded": true }
-```
-
-### `POST /analyze`
-Upload a JPEG or PNG image. Returns JSON:
-
-```json
-{
-  "num_detected": 3,
-  "annotated_image": "<base64 PNG>",
-  "results": [
-    {
-      "banana_id": 1,
-      "ripeness": "ripe",
-      "confidence": 0.923,
-      "all_probs": { "overripe": 0.02, "ripe": 0.92, "rotten": 0.01, "unripe": 0.04 },
-      "seg_score": 0.97,
-      "bbox": [120, 80, 340, 420],
-      "low_conf": false,
-      "exposure_tag": "",
-      "crop_image": "<base64 PNG>"
-    }
-  ],
-  "summary": { "ripe": 2, "unripe": 1, "overripe": 0, "rotten": 0 },
-  "processing_time_ms": 312.4
-}
-```
-
----
-
-## ML Pipeline Details
-
-| Parameter | Value |
-|-----------|-------|
-| Segmentation threshold | 0.90 |
-| Mask binarisation threshold | 0.50 |
-| Minimum banana area | 1500 px² |
-| Low-confidence warning | < 60% |
-| TTA variants | 5 (center crop, h-flip, scale-280, ±10° rotation) |
-
-### Class mapping (fixed, alphabetical)
-
-| Index | Class    | Colour  |
-|-------|----------|---------|
-| 0     | overripe | Orange  |
-| 1     | ripe     | Yellow  |
-| 2     | rotten   | Red     |
-| 3     | unripe   | Green   |
-
----
-
-## Frontend Features
-
-- 🎨 Dark glassmorphism UI with animated gradient background
-- 🖱 Drag-and-drop image upload with live preview
-- 🔄 Animated loading overlay with cycling status messages
-- 📊 Animated summary cards with count-up effect
-- 🍌 Per-banana detail cards with probability bar charts
-- ⚠️ Low-confidence warnings and exposure-correction tags
-- ⬇️ Download annotated result image
-- 📱 Fully responsive (mobile, tablet, desktop)
-- 🔔 Toast notifications for errors
-
----
-
-## Troubleshooting
-
-| Problem | Fix |
-|---------|-----|
-| `503 Models not loaded` | Place `.pth` files in `app/models/` and restart |
-| `415 Unsupported file type` | Upload JPG, PNG, or WEBP only |
-| CUDA out of memory | Reduce image size before uploading |
-| Slow inference | Expected on CPU — GPU strongly recommended |
+- **`GET /health`**: Healthcheck endpoint returning server status, hardware acceleration (`cuda`/`cpu`), and model status.
+- **`GET /samples`**: Returns a list of built-in preset demo images with metadata.
+- **`POST /analyze`**: Accepts a multipart image file (`JPG`/`PNG`/`WEBP`) and returns bounding boxes, segmentation masks, ripeness classification, confidence scores, and storage recommendations in JSON format.
