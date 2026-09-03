@@ -5,8 +5,14 @@ Faithfully ported from: banana_integrated_pipeline_second.ipynb
 
 import os
 import numpy as np
-import cv2
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageDraw
+
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except Exception:
+    cv2 = None
+    CV2_AVAILABLE = False
 
 # ── Thresholds (must match notebook exactly) ─────────────────────────────────
 SEG_SCORE_THRESHOLD      = 0.90   # Mask R-CNN confidence threshold
@@ -230,12 +236,21 @@ def generate_annotated_image(image_rgb: np.ndarray, results: list) -> np.ndarray
             f"#{res['banana_id']} {res['ripeness']} "
             f"{res['confidence'] * 100:.0f}%"
         )
-        cv2.putText(
-            overlay, label_txt,
-            (x1, max(y1 - 8, 14)),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.55,
-            color, 2, cv2.LINE_AA,
-        )
+        if cv2 is not None:
+            cv2.putText(
+                overlay, label_txt,
+                (x1, max(y1 - 8, 14)),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.55,
+                color, 2, cv2.LINE_AA,
+            )
+            cv2.rectangle(overlay, (x1, y1), (x2, y2), color, 2)
+        else:
+            # Fallback drawing on PIL
+            pil_img = Image.fromarray(overlay)
+            draw = ImageDraw.Draw(pil_img)
+            draw.rectangle([x1, y1, x2, y2], outline=tuple(color), width=2)
+            draw.text((x1 + 4, max(y1 - 16, 4)), label_txt, fill=tuple(color))
+            overlay = np.array(pil_img)
 
     return overlay
 
@@ -395,100 +410,147 @@ FRUIT_INSIGHTS = {
 # ─────────────────────────────────────────────────────────────────────────────
 def run_cv_fallback_pipeline(image_path: str, crop_padding: int = CROP_PADDING) -> dict:
     """
-    Intelligent Computer Vision fallback using HSV color segmentation & contour analysis.
-    Ensures zero 503 errors and seamless app testing even before .pth weights are supplied.
+    Intelligent Computer Vision fallback using color segmentation & contour analysis.
+    Works with OpenCV when available, or pure PIL+NumPy in serverless cloud environments.
     """
-    image_bgr = cv2.imread(image_path)
-    if image_bgr is None:
-        raise FileNotFoundError(f"Cannot read image: {image_path}")
-    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    if cv2 is not None:
+        image_bgr = cv2.imread(image_path)
+        if image_bgr is None:
+            pil_img = Image.open(image_path).convert("RGB")
+            image_rgb = np.array(pil_img)
+        else:
+            image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    else:
+        pil_img = Image.open(image_path).convert("RGB")
+        image_rgb = np.array(pil_img)
+
     h, w = image_rgb.shape[:2]
 
-    # Convert to HSV
-    hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
+    if cv2 is not None:
+        hsv = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2HSV)
+        lower_yellow = np.array([12, 50, 60])
+        upper_yellow = np.array([36, 255, 255])
+        mask_yellow = cv2.inRange(hsv, lower_yellow, upper_yellow)
 
-    # Color ranges for banana detection (Yellow, Green, and Brown)
-    lower_yellow = np.array([12, 50, 60])
-    upper_yellow = np.array([36, 255, 255])
-    mask_yellow = cv2.inRange(hsv, lower_yellow, upper_yellow)
+        lower_green = np.array([35, 40, 40])
+        upper_green = np.array([85, 255, 255])
+        mask_green = cv2.inRange(hsv, lower_green, upper_green)
 
-    lower_green = np.array([35, 40, 40])
-    upper_green = np.array([85, 255, 255])
-    mask_green = cv2.inRange(hsv, lower_green, upper_green)
+        lower_brown = np.array([5, 40, 20])
+        upper_brown = np.array([22, 255, 140])
+        mask_brown = cv2.inRange(hsv, lower_brown, upper_brown)
 
-    lower_brown = np.array([5, 40, 20])
-    upper_brown = np.array([22, 255, 140])
-    mask_brown = cv2.inRange(hsv, lower_brown, upper_brown)
+        combined_mask = mask_yellow | mask_green | mask_brown
 
-    combined_mask = mask_yellow | mask_green | mask_brown
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+        cleaned_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+        cleaned_mask = cv2.morphologyEx(cleaned_mask, cv2.MORPH_OPEN, kernel, iterations=1)
 
-    # Morphological cleaning
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
-    cleaned_mask = cv2.morphologyEx(combined_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-    cleaned_mask = cv2.morphologyEx(cleaned_mask, cv2.MORPH_OPEN, kernel, iterations=1)
-
-    contours, _ = cv2.findContours(cleaned_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    valid_contours = [c for c in contours if cv2.contourArea(c) >= MIN_BANANA_AREA]
+        contours, _ = cv2.findContours(cleaned_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        valid_contours = [c for c in contours if cv2.contourArea(c) >= MIN_BANANA_AREA]
+    else:
+        valid_contours = []
 
     # Fallback if no specific contours detected: use central region
     if not valid_contours:
-        margin_y, margin_x = int(h * 0.1), int(w * 0.1)
-        fallback_mask = np.zeros((h, w), dtype=bool)
-        fallback_mask[margin_y:h-margin_y, margin_x:w-margin_x] = True
-        cnt = np.array([[margin_x, margin_y], [w-margin_x, margin_y], [w-margin_x, h-margin_y], [margin_x, h-margin_y]])
-        valid_contours = [cnt]
+        margin_y, margin_x = int(h * 0.08), int(w * 0.08)
+        binary_mask = np.zeros((h, w), dtype=bool)
+        binary_mask[margin_y:h-margin_y, margin_x:w-margin_x] = True
+        valid_contours = None
 
     results = []
-    for i, cnt in enumerate(valid_contours):
-        x, y, cw, ch = cv2.boundingRect(cnt)
-        x1 = max(0, x - crop_padding)
-        y1 = max(0, y - crop_padding)
-        x2 = min(w, x + cw + crop_padding)
-        y2 = min(h, y + ch + crop_padding)
+    if valid_contours:
+        for i, cnt in enumerate(valid_contours):
+            x, y, cw, ch = cv2.boundingRect(cnt)
+            x1 = max(0, x - crop_padding)
+            y1 = max(0, y - crop_padding)
+            x2 = min(w, x + cw + crop_padding)
+            y2 = min(h, y + ch + crop_padding)
 
-        binary_mask = np.zeros((h, w), dtype=bool)
-        cv2.drawContours(binary_mask.view(np.uint8), [cnt], -1, 1, -1)
+            binary_mask = np.zeros((h, w), dtype=bool)
+            cv2.drawContours(binary_mask.view(np.uint8), [cnt], -1, 1, -1)
 
-        crop_pil = extract_tight_crop(image_rgb, binary_mask, padding=crop_padding)
+            crop_pil = extract_tight_crop(image_rgb, binary_mask, padding=crop_padding)
 
-        # Analyze color composition inside the banana contour
-        banana_pixels = hsv[binary_mask]
-        if len(banana_pixels) > 0:
-            h_vals = banana_pixels[:, 0]
-            s_vals = banana_pixels[:, 1]
-            v_vals = banana_pixels[:, 2]
+            banana_pixels = hsv[binary_mask] if cv2 is not None else image_rgb[binary_mask]
+            if len(banana_pixels) > 0:
+                h_vals = banana_pixels[:, 0]
+                s_vals = banana_pixels[:, 1]
+                v_vals = banana_pixels[:, 2]
 
-            green_ratio = np.mean((h_vals >= 35) & (h_vals <= 85) & (s_vals > 30))
-            yellow_ratio = np.mean((h_vals >= 15) & (h_vals < 35) & (s_vals > 40) & (v_vals > 100))
-            brown_ratio = np.mean(((h_vals < 18) | (v_vals < 70)) & (s_vals > 20))
-            rotten_ratio = np.mean((v_vals < 50) | ((h_vals < 10) & (s_vals > 100)))
+                green_ratio = np.mean((h_vals >= 35) & (h_vals <= 85) & (s_vals > 30))
+                yellow_ratio = np.mean((h_vals >= 15) & (h_vals < 35) & (s_vals > 40) & (v_vals > 100))
+                brown_ratio = np.mean(((h_vals < 18) | (v_vals < 70)) & (s_vals > 20))
+                rotten_ratio = np.mean((v_vals < 50) | ((h_vals < 10) & (s_vals > 100)))
 
-            # Normalize probabilities
-            raw_scores = np.array([
-                brown_ratio * 1.6 + 0.05,       # 0: overripe
-                yellow_ratio * 1.8 + 0.1,      # 1: ripe
-                rotten_ratio * 2.0 + 0.02,     # 2: rotten
-                green_ratio * 1.9 + 0.05       # 3: unripe
-            ], dtype=float)
-            probs = raw_scores / (raw_scores.sum() + 1e-6)
-        else:
-            probs = np.array([0.1, 0.7, 0.05, 0.15])
+                raw_scores = np.array([
+                    brown_ratio * 1.6 + 0.05,
+                    yellow_ratio * 1.8 + 0.1,
+                    rotten_ratio * 2.0 + 0.02,
+                    green_ratio * 1.9 + 0.05
+                ], dtype=float)
+                probs = raw_scores / (raw_scores.sum() + 1e-6)
+            else:
+                probs = np.array([0.1, 0.7, 0.05, 0.15])
+
+            pred_idx = int(np.argmax(probs))
+            ripeness = IDX_TO_CLASS[pred_idx]
+            conf = float(probs[pred_idx])
+
+            results.append({
+                "banana_id"   : i + 1,
+                "seg_score"   : 0.94,
+                "bbox"        : (x1, y1, x2, y2),
+                "binary_mask" : binary_mask,
+                "crop_pil"    : crop_pil,
+                "ripeness"    : ripeness,
+                "confidence"  : conf,
+                "all_probs"   : probs,
+                "low_conf"    : conf < CLS_CONFIDENCE_THRESHOLD,
+                "exposure_tag": "[CV Analysis Mode]",
+                "insight"     : FRUIT_INSIGHTS.get(ripeness, {}),
+            })
+    else:
+        # Pure PIL / NumPy banana color calculation
+        r = image_rgb[:, :, 0].astype(float)
+        g = image_rgb[:, :, 1].astype(float)
+        b = image_rgb[:, :, 2].astype(float)
+
+        green_mask = (g > r + 10) & (g > b + 10)
+        yellow_mask = (r > 130) & (g > 110) & (b < 100)
+        brown_mask = (r > 70) & (r < 150) & (g > 40) & (g < 110) & (b < 70)
+        rotten_mask = (r < 60) & (g < 60) & (b < 60)
+
+        total_banana_px = np.sum(green_mask | yellow_mask | brown_mask | rotten_mask) + 1e-6
+        green_ratio = np.sum(green_mask) / total_banana_px
+        yellow_ratio = np.sum(yellow_mask) / total_banana_px
+        brown_ratio = np.sum(brown_mask) / total_banana_px
+        rotten_ratio = np.sum(rotten_mask) / total_banana_px
+
+        raw_scores = np.array([
+            brown_ratio * 1.6 + 0.05,
+            yellow_ratio * 1.8 + 0.1,
+            rotten_ratio * 2.0 + 0.02,
+            green_ratio * 1.9 + 0.05
+        ], dtype=float)
+        probs = raw_scores / (raw_scores.sum() + 1e-6)
 
         pred_idx = int(np.argmax(probs))
         ripeness = IDX_TO_CLASS[pred_idx]
         conf = float(probs[pred_idx])
 
+        margin_y, margin_x = int(h * 0.08), int(w * 0.08)
         results.append({
-            "banana_id"   : i + 1,
-            "seg_score"   : 0.94,
-            "bbox"        : (x1, y1, x2, y2),
+            "banana_id"   : 1,
+            "seg_score"   : 0.95,
+            "bbox"        : (margin_x, margin_y, w - margin_x, h - margin_y),
             "binary_mask" : binary_mask,
-            "crop_pil"    : crop_pil,
+            "crop_pil"    : Image.fromarray(image_rgb),
             "ripeness"    : ripeness,
             "confidence"  : conf,
             "all_probs"   : probs,
             "low_conf"    : conf < CLS_CONFIDENCE_THRESHOLD,
-            "exposure_tag": "[CV Analysis Mode]",
+            "exposure_tag": "[Serverless Analysis]",
             "insight"     : FRUIT_INSIGHTS.get(ripeness, {}),
         })
 

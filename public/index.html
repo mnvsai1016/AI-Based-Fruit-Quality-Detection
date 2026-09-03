@@ -1,0 +1,1739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>AI Fruit Quality Detection — BananaVision</title>
+  <meta name="description" content="AI-Based Fruit Quality Detection system, currently specialized and fine-tuned for Bananas to detect instances and classify ripeness stages." />
+  <meta name="theme-color" content="#0a0a0f" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    /* ═══════════════════════════════════════════════════════
+       DESIGN TOKENS — SIGNATURE BANANA THEME
+    ═══════════════════════════════════════════════════════ */
+    :root {
+      --banana-yellow : #F5C518;
+      --banana-yellow-light: #FFE066;
+      --ripe-green    : #00C851;
+      --overripe-orange: #FF8800;
+      --rotten-red    : #CC0000;
+      --unripe-green  : #00C851;
+
+      /* Ripeness palette */
+      --c-unripe  : #00C851;
+      --c-ripe    : #F5C518;
+      --c-overripe: #FF8800;
+      --c-rotten  : #CC0000;
+
+      /* Background & surface */
+      --bg         : #0a0a0f;
+      --bg-2       : #12121c;
+      --surface    : rgba(255,255,255,0.04);
+      --surface-hov: rgba(255,255,255,0.08);
+      --border     : rgba(255,255,255,0.09);
+      --border-hov : rgba(245,197,24,0.45);
+
+      /* Text */
+      --text-primary  : #f0f0f5;
+      --text-secondary: #9090aa;
+      --text-muted    : #5c5c7d;
+
+      /* Glow */
+      --glow-yellow: 0 0 32px rgba(245,197,24,0.35);
+      --glow-green : 0 0 24px rgba(0,200,81,0.35);
+
+      /* Radius */
+      --r-sm : 12px;
+      --r-md : 18px;
+      --r-lg : 24px;
+      --r-xl : 32px;
+
+      /* Transition */
+      --t : 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       RESET & BASE
+    ═══════════════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+      position: relative;
+      padding-bottom: env(safe-area-inset-bottom, 24px);
+    }
+
+    /* Subtle ambient glow background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 10%, rgba(245,197,24,0.06) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 90%, rgba(0,200,81,0.045) 0%, transparent 55%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .bg-grid {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 20%, transparent 100%);
+      -webkit-mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 20%, transparent 100%);
+    }
+
+    .container {
+      max-width: 1060px;
+      margin: 0 auto;
+      padding: 0 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       HEADER
+    ═══════════════════════════════════════════════════════ */
+    header {
+      padding: 36px 0 24px;
+      text-align: center;
+      position: relative;
+    }
+
+    .header-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .logo-icon {
+      width: 44px;
+      height: 44px;
+      flex-shrink: 0;
+      filter: drop-shadow(0 0 14px rgba(245,197,24,0.5));
+    }
+
+    h1.brand {
+      font-size: clamp(2.2rem, 5.5vw, 3.4rem);
+      font-weight: 900;
+      background: linear-gradient(135deg, #F5C518 0%, #FFE066 50%, #00C851 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -1.2px;
+      line-height: 1.1;
+    }
+
+    .tagline {
+      font-size: clamp(0.88rem, 2.5vw, 1.05rem);
+      color: var(--text-secondary);
+      font-weight: 400;
+      max-width: 600px;
+    }
+
+    .device-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 5px 14px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      letter-spacing: 0.4px;
+      margin-top: 4px;
+      transition: var(--t);
+    }
+    .device-badge.gpu  { border-color: rgba(0,200,81,0.45); color: var(--ripe-green); background: rgba(0,200,81,0.06); }
+    .device-badge.cpu  { border-color: rgba(245,197,24,0.45); color: var(--banana-yellow); background: rgba(245,197,24,0.06); }
+    .device-badge .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50%     { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       GLASS CARD BASE
+    ═══════════════════════════════════════════════════════ */
+    .glass-card {
+      background: rgba(18,18,28,0.72);
+      backdrop-filter: blur(20px) saturate(140%);
+      -webkit-backdrop-filter: blur(20px) saturate(140%);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      transition: border-color var(--t), box-shadow var(--t), transform var(--t);
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       SAMPLE PRESETS (Instant 1-Click Testing)
+    ═══════════════════════════════════════════════════════ */
+    .samples-section {
+      margin-bottom: 20px;
+    }
+    .section-title-sm {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .samples-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    @media (max-width: 600px) {
+      .samples-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    .sample-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      cursor: pointer;
+      transition: var(--t);
+      text-align: left;
+      min-height: 48px;
+    }
+    .sample-pill:hover, .sample-pill:active {
+      border-color: var(--banana-yellow);
+      background: rgba(245,197,24,0.08);
+      transform: translateY(-2px);
+    }
+    .sample-thumb {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      object-fit: cover;
+      flex-shrink: 0;
+      border: 1px solid var(--border);
+    }
+    .sample-info {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sample-name {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sample-desc {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       UPLOAD & CAMERA ZONE
+    ═══════════════════════════════════════════════════════ */
+    .upload-section {
+      margin-bottom: 24px;
+    }
+
+    #drop-zone {
+      position: relative;
+      border: 2px dashed var(--border);
+      border-radius: var(--r-lg);
+      padding: 42px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: var(--t);
+      background: rgba(18,18,28,0.72);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      overflow: hidden;
+    }
+    #drop-zone.drag-over {
+      border-color: var(--banana-yellow);
+      box-shadow: 0 0 0 4px rgba(245,197,24,0.2), var(--glow-yellow);
+      background: rgba(245,197,24,0.06);
+    }
+    #drop-zone.has-image {
+      padding: 18px;
+    }
+
+    .upload-icon-wrap {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 14px;
+      background: rgba(245,197,24,0.08);
+      border: 1.5px solid rgba(245,197,24,0.22);
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: var(--t);
+    }
+    #drop-zone:hover .upload-icon-wrap {
+      transform: translateY(-3px);
+      background: rgba(245,197,24,0.15);
+      border-color: var(--banana-yellow);
+    }
+    .upload-icon-svg {
+      width: 28px;
+      height: 28px;
+      color: var(--banana-yellow);
+      stroke: currentColor;
+      fill: none;
+    }
+
+    .upload-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+    .upload-sub {
+      font-size: 0.88rem;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+    .upload-formats {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .format-pill {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.6px;
+    }
+
+    /* Preview state */
+    #preview-wrap {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    #preview-wrap.visible { display: flex; }
+
+    #preview-img {
+      max-height: 320px;
+      max-width: 100%;
+      border-radius: var(--r-md);
+      object-fit: contain;
+      border: 1.5px solid var(--border);
+      box-shadow: 0 8px 36px rgba(0,0,0,0.5);
+    }
+
+    .preview-file-name {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      max-width: 200px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .change-btn {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--banana-yellow);
+      cursor: pointer;
+      background: rgba(245,197,24,0.1);
+      border: 1px solid rgba(245,197,24,0.3);
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-family: inherit;
+      transition: var(--t);
+    }
+    .change-btn:hover {
+      background: rgba(245,197,24,0.2);
+    }
+
+    /* Action Buttons (Upload & Camera) */
+    .input-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 14px;
+      justify-content: center;
+    }
+
+    .input-action-btn {
+      flex: 1;
+      max-width: 240px;
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 10px 18px;
+      cursor: pointer;
+      transition: var(--t);
+    }
+    .input-action-btn svg {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+    }
+    .input-action-btn:hover, .input-action-btn:active {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+    .input-action-btn.upload-btn:hover {
+      border-color: rgba(245,197,24,0.55);
+      color: var(--banana-yellow);
+      background: rgba(245,197,24,0.09);
+    }
+    .input-action-btn.camera-btn:hover {
+      border-color: rgba(0,200,81,0.55);
+      color: var(--ripe-green);
+      background: rgba(0,200,81,0.09);
+    }
+
+    #file-input, #camera-input { display: none; }
+
+    /* ═══════════════════════════════════════════════════════
+       CTA ANALYZE BUTTON
+    ═══════════════════════════════════════════════════════ */
+    .cta-wrap {
+      display: flex;
+      justify-content: center;
+      padding: 12px 0 28px;
+    }
+
+    #analyze-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: linear-gradient(135deg, #F5C518 0%, #00C851 100%);
+      color: #0a0a0f;
+      font-family: inherit;
+      font-size: 1.05rem;
+      font-weight: 800;
+      min-height: 52px;
+      padding: 14px 44px;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 4px 28px rgba(245,197,24,0.35);
+      transition: var(--t);
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+      max-width: 360px;
+    }
+    #analyze-btn:hover:not(:disabled) {
+      transform: translateY(-2px) scale(1.02);
+      box-shadow: 0 8px 40px rgba(245,197,24,0.5);
+    }
+    #analyze-btn:active:not(:disabled) {
+      transform: translateY(0) scale(0.99);
+    }
+    #analyze-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      filter: grayscale(30%);
+      box-shadow: none;
+    }
+
+    .btn-spinner {
+      width: 20px; height: 20px;
+      border: 2.5px solid rgba(10,10,15,0.3);
+      border-top-color: #0a0a0f;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #analyze-btn.loading .btn-spinner { display: block; }
+    #analyze-btn.loading .btn-label  { display: none; }
+
+    /* ═══════════════════════════════════════════════════════
+       LIVE WEBCAM / CAMERA MODAL
+    ═══════════════════════════════════════════════════════ */
+    #camera-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(10,10,15,0.92);
+      backdrop-filter: blur(16px);
+      z-index: 2000;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    #camera-modal.visible { display: flex; }
+
+    .camera-card {
+      position: relative;
+      width: 100%;
+      max-width: 520px;
+      background: #11111a;
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .camera-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .camera-header-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .camera-close-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1.4rem;
+      line-height: 1;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+    .camera-close-btn:hover { color: #fff; background: var(--surface); }
+
+    .video-viewport {
+      position: relative;
+      width: 100%;
+      background: #000;
+      aspect-ratio: 4/3;
+      overflow: hidden;
+    }
+    #camera-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .camera-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding: 16px 20px;
+      background: #11111a;
+    }
+    .cam-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-family: inherit;
+      border-radius: 999px;
+      transition: var(--t);
+    }
+    .flip-btn {
+      width: 44px;
+      height: 44px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+    }
+    .flip-btn:hover { background: var(--surface-hov); }
+    .snap-btn {
+      width: 64px;
+      height: 64px;
+      background: linear-gradient(135deg, #F5C518, #00C851);
+      border: 4px solid #11111a;
+      box-shadow: 0 0 0 2px var(--banana-yellow);
+    }
+    .snap-btn:hover, .snap-btn:active {
+      transform: scale(0.95);
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       LOADING OVERLAY
+    ═══════════════════════════════════════════════════════ */
+    #loading-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(10,10,15,0.92);
+      backdrop-filter: blur(16px);
+      z-index: 1000;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      padding: 20px;
+    }
+    #loading-overlay.visible { display: flex; }
+
+    .nn-spinner {
+      position: relative;
+      width: 76px;
+      height: 76px;
+    }
+    .nn-spinner svg {
+      width: 100%;
+      height: 100%;
+      animation: spin 2.4s linear infinite;
+    }
+    .nn-ring-outer {
+      fill: none;
+      stroke: rgba(245,197,24,0.15);
+      stroke-width: 3.5;
+    }
+    .nn-ring-progress {
+      fill: none;
+      stroke: url(#spinnerGrad);
+      stroke-width: 3.5;
+      stroke-linecap: round;
+      stroke-dasharray: 188;
+      stroke-dashoffset: 48;
+    }
+    .nn-ring-inner {
+      fill: none;
+      stroke: rgba(0,200,81,0.2);
+      stroke-width: 2.5;
+    }
+    .nn-ring-progress-inner {
+      fill: none;
+      stroke: rgba(0,200,81,0.8);
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-dasharray: 125;
+      stroke-dashoffset: 32;
+      animation: spinReverse 1.6s linear infinite;
+    }
+    @keyframes spinReverse { to { transform: rotate(-360deg); transform-origin: 38px 38px; } }
+
+    .nn-dot {
+      position: absolute;
+      inset: 50%;
+      width: 10px; height: 10px;
+      margin: -5px 0 0 -5px;
+      border-radius: 50%;
+      background: var(--banana-yellow);
+      box-shadow: 0 0 12px rgba(245,197,24,0.7);
+      animation: dotPulse 1.4s ease-in-out infinite;
+    }
+    @keyframes dotPulse {
+      0%,100% { transform: scale(1); opacity: 1; }
+      50%     { transform: scale(1.4); opacity: 0.6; }
+    }
+
+    .loading-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      text-align: center;
+    }
+    .loading-text {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      text-align: center;
+      min-height: 1.6em;
+      transition: opacity 0.35s;
+    }
+
+    .loading-progress-track {
+      width: 220px;
+      height: 3px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .loading-progress-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #F5C518, #00C851);
+      animation: progressPulse 1.8s ease-in-out infinite;
+      transform-origin: left;
+    }
+    @keyframes progressPulse {
+      0%   { width: 15%; opacity: 0.5; }
+      50%  { width: 80%; opacity: 1; }
+      100% { width: 15%; opacity: 0.5; }
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       RESULTS PANEL
+    ═══════════════════════════════════════════════════════ */
+    #results-panel {
+      display: none;
+      flex-direction: column;
+      gap: 28px;
+      padding: 10px 0 60px;
+      animation: fadeSlideUp 0.45s ease forwards;
+    }
+    #results-panel.visible { display: flex; }
+
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .section-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    /* Annotated Image Card */
+    .annotated-wrap {
+      position: relative;
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+      border: 1px solid var(--border);
+      background: #000;
+    }
+    #annotated-img {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-height: 520px;
+      object-fit: contain;
+    }
+    .annotated-toolbar {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      display: flex;
+      gap: 8px;
+    }
+    .dl-btn, .share-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(10,10,15,0.8);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 7px 14px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: var(--t);
+    }
+    .dl-btn:hover, .share-btn:hover {
+      background: rgba(245,197,24,0.15);
+      border-color: var(--banana-yellow);
+      color: var(--banana-yellow);
+    }
+
+    /* Summary Grid */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+    @media (max-width: 640px) {
+      .summary-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .summary-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      padding: 16px 12px;
+      text-align: center;
+      transition: var(--t);
+      position: relative;
+      overflow: hidden;
+    }
+    .summary-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 50% 0%, var(--card-accent), transparent);
+      opacity: 0.12;
+      pointer-events: none;
+    }
+    .summary-card.highlight {
+      border-color: var(--card-accent);
+      box-shadow: 0 0 0 1px var(--card-accent), 0 6px 24px rgba(0,0,0,0.3);
+    }
+    .summary-emoji { font-size: 1.6rem; margin-bottom: 6px; }
+    .summary-class {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--card-accent, var(--text-muted));
+      margin-bottom: 4px;
+    }
+    .summary-count {
+      font-size: 2.2rem;
+      font-weight: 900;
+      color: var(--text-primary);
+      line-height: 1;
+    }
+
+    /* Banana Instance Cards */
+    .banana-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    @media (max-width: 480px) {
+      .banana-grid { grid-template-columns: 1fr; }
+    }
+
+    .banana-card {
+      background: rgba(18,18,28,0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      padding: 16px;
+      transition: var(--t);
+      position: relative;
+      cursor: pointer;
+    }
+    .banana-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+      border-color: var(--card-accent, var(--border-hov));
+    }
+
+    .banana-crop-wrap {
+      position: relative;
+      width: 100%;
+      height: 140px;
+      border-radius: var(--r-sm);
+      overflow: hidden;
+      background: #000;
+      margin-bottom: 12px;
+    }
+    .banana-crop-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .banana-title {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .ripeness-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .confidence-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin: 8px 0 10px;
+    }
+    .confidence-val {
+      font-size: 1.7rem;
+      font-weight: 900;
+      color: var(--text-primary);
+      line-height: 1;
+    }
+    .confidence-pct { font-size: 0.8rem; color: var(--text-secondary); }
+
+    /* Actionable Insight Box */
+    .insight-box {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--r-sm);
+      padding: 10px 12px;
+      margin: 10px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .insight-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.74rem;
+    }
+    .insight-label { color: var(--text-muted); font-weight: 500; }
+    .insight-val { color: var(--text-primary); font-weight: 700; }
+    .insight-tip {
+      font-size: 0.72rem;
+      color: var(--text-secondary);
+      line-height: 1.35;
+      margin-top: 2px;
+      border-top: 1px dashed rgba(255,255,255,0.06);
+      padding-top: 6px;
+    }
+
+    /* Probability bars */
+    .prob-chart { margin-top: 10px; }
+    .prob-label {
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      margin-bottom: 5px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+    .bar-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .bar-class-name {
+      width: 54px;
+      font-size: 0.68rem;
+      color: var(--text-secondary);
+      text-transform: capitalize;
+      flex-shrink: 0;
+    }
+    .bar-track {
+      flex: 1;
+      height: 6px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      transition: width 0.7s cubic-bezier(0.34,1.56,0.64,1);
+      width: 0%;
+    }
+    .bar-pct {
+      font-size: 0.64rem;
+      color: var(--text-muted);
+      width: 32px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* Processing Footer */
+    .proc-footer {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: center;
+      justify-content: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      padding: 14px 20px;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      text-align: center;
+    }
+    .proc-item strong { color: var(--text-primary); font-weight: 700; }
+    .proc-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--border); }
+
+    /* Empty State */
+    .empty-state {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding: 36px 16px;
+      text-align: center;
+    }
+    .empty-state.visible { display: flex; }
+    .empty-icon {
+      width: 56px;
+      height: 56px;
+      background: rgba(255,136,0,0.08);
+      border: 1.5px solid rgba(255,136,0,0.25);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .empty-icon svg { width: 26px; height: 26px; stroke: #FF8800; fill: none; }
+    .empty-title { font-size: 1.15rem; font-weight: 700; color: var(--text-primary); }
+    .empty-sub   { font-size: 0.85rem; color: var(--text-secondary); max-width: 360px; }
+    .retry-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 8px 20px;
+      cursor: pointer;
+      transition: var(--t);
+    }
+    .retry-btn:hover { border-color: var(--banana-yellow); color: var(--banana-yellow); }
+
+    /* Toast */
+    #toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 20px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+      max-width: calc(100vw - 40px);
+    }
+    .toast {
+      background: rgba(22,22,34,0.95);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 12px 16px;
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      pointer-events: auto;
+      animation: toastIn 0.3s ease, toastOut 0.3s ease 4.7s forwards;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.5);
+    }
+    .toast.error  { border-color: rgba(204,0,0,0.5); }
+    .toast.success{ border-color: rgba(0,200,81,0.5); }
+    @keyframes toastIn  { from { opacity:0; transform: translateY(16px); } to { opacity:1; transform: translateY(0); } }
+    @keyframes toastOut { to   { opacity:0; transform: translateY(16px); } }
+  </style>
+</head>
+<body>
+
+<!-- Ambient Grid Background -->
+<div class="bg-grid"></div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- ════════════════════ LOADING OVERLAY ════════════════════ -->
+<div id="loading-overlay" role="status" aria-live="polite">
+  <div class="nn-spinner">
+    <svg viewBox="0 0 76 76" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="spinnerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"   stop-color="#F5C518"/>
+          <stop offset="100%" stop-color="#00C851"/>
+        </linearGradient>
+      </defs>
+      <circle class="nn-ring-outer" cx="38" cy="38" r="34"/>
+      <circle class="nn-ring-progress" cx="38" cy="38" r="34" transform="rotate(-90 38 38)"/>
+      <circle class="nn-ring-inner" cx="38" cy="38" r="24"/>
+      <circle class="nn-ring-progress-inner" cx="38" cy="38" r="24" transform="rotate(90 38 38)"/>
+    </svg>
+    <div class="nn-dot"></div>
+  </div>
+
+  <div>
+    <div class="loading-label">BananaVision AI</div>
+  </div>
+  <div class="loading-text" id="loading-text">Analyzing fruit ripeness…</div>
+
+  <div class="loading-progress-track">
+    <div class="loading-progress-fill"></div>
+  </div>
+</div>
+
+<!-- ════════════════════ LIVE CAMERA MODAL ════════════════════ -->
+<div id="camera-modal">
+  <div class="camera-card">
+    <div class="camera-header">
+      <span class="camera-header-title">📸 Live Camera Viewfinder</span>
+      <button class="camera-close-btn" id="cam-close-btn">&times;</button>
+    </div>
+    <div class="video-viewport">
+      <video id="camera-video" autoplay playsinline muted></video>
+    </div>
+    <div class="camera-controls">
+      <button class="cam-btn flip-btn" id="cam-flip-btn" title="Switch camera">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 10c0-4.418-3.582-8-8-8s-8 3.582-8 8c0 2.2 1.05 4.15 2.68 5.4L5 19h5v-5l-1.8 1.8C7.1 14.8 6 13 6 10c0-3.314 2.686-6 6-6s6 2.686 6 6c0 1.95-.93 3.68-2.38 4.79l1.42 1.42C18.8 14.6 20 12.45 20 10z"/>
+        </svg>
+      </button>
+      <button class="cam-btn snap-btn" id="cam-snap-btn" title="Capture photo"></button>
+      <div style="width: 44px;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- ══════════════════ HEADER ══════════════════ -->
+  <header>
+    <div class="header-inner">
+      <div class="logo-row">
+        <!-- Leaf/Fruit Science SVG -->
+        <svg class="logo-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="logoGrad" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#F5C518"/>
+              <stop offset="100%" stop-color="#00C851"/>
+            </linearGradient>
+          </defs>
+          <rect x="4" y="4" width="40" height="40" rx="12" fill="url(#logoGrad)" opacity="0.15"/>
+          <rect x="4" y="4" width="40" height="40" rx="12" stroke="url(#logoGrad)" stroke-width="1.5" fill="none"/>
+          <path d="M24 10 C16 14 10 22 12 32 C16 30 22 26 24 20 C26 26 32 30 36 32 C38 22 32 14 24 10Z" fill="url(#logoGrad)" opacity="0.9"/>
+          <line x1="24" y1="20" x2="24" y2="38" stroke="url(#logoGrad)" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <h1 class="brand">BananaVision</h1>
+      </div>
+      <p class="tagline">AI Fruit Quality Detection · Currently Fine-Tuned for Bananas (Unripe / Ripe / Overripe / Rotten)</p>
+      <div class="device-badge" id="device-badge">
+        <span class="dot"></span>
+        <span id="device-label">Checking engine…</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══════════════════ PRESET SAMPLES ══════════════════ -->
+  <section class="samples-section" aria-label="Sample test presets">
+    <div class="section-title-sm">
+      <span>⚡ Quick Test Demos</span>
+    </div>
+    <div class="samples-grid" id="samples-grid">
+      <!-- Populated via JS / fallback -->
+      <div class="sample-pill" data-src="/static/samples/sample_unripe.jpg" data-name="Unripe (Green)">
+        <img class="sample-thumb" src="/static/samples/sample_unripe.jpg" alt="Unripe" />
+        <div class="sample-info">
+          <span class="sample-name">Unripe Green</span>
+          <span class="sample-desc">5-7 days left</span>
+        </div>
+      </div>
+      <div class="sample-pill" data-src="/static/samples/sample_ripe.jpg" data-name="Perfect Ripe">
+        <img class="sample-thumb" src="/static/samples/sample_ripe.jpg" alt="Ripe" />
+        <div class="sample-info">
+          <span class="sample-name">Perfect Ripe</span>
+          <span class="sample-desc">Ready to eat</span>
+        </div>
+      </div>
+      <div class="sample-pill" data-src="/static/samples/sample_overripe.jpg" data-name="Sweet Overripe">
+        <img class="sample-thumb" src="/static/samples/sample_overripe.jpg" alt="Overripe" />
+        <div class="sample-info">
+          <span class="sample-name">Sweet Overripe</span>
+          <span class="sample-desc">Best for baking</span>
+        </div>
+      </div>
+      <div class="sample-pill" data-src="/static/samples/sample_bunch.jpeg" data-name="Banana Bunch">
+        <img class="sample-thumb" src="/static/samples/sample_bunch.jpeg" alt="Bunch" />
+        <div class="sample-info">
+          <span class="sample-name">Fresh Bunch</span>
+          <span class="sample-desc">Multiple bananas</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════ UPLOAD ZONE ══════════════════ -->
+  <section class="upload-section" aria-label="Image upload">
+    <div id="drop-zone" role="button" tabindex="0" aria-label="Drop zone for banana image">
+      <!-- Upload Empty State -->
+      <div id="upload-placeholder">
+        <div class="upload-icon-wrap">
+          <svg class="upload-icon-svg" viewBox="0 0 24 24" stroke-width="1.8" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/>
+          </svg>
+        </div>
+        <p class="upload-title">Drop banana image here</p>
+        <p class="upload-sub">or pick from files or live camera</p>
+        <div class="upload-formats">
+          <span class="format-pill">JPG</span>
+          <span class="format-pill">PNG</span>
+          <span class="format-pill">WEBP</span>
+        </div>
+      </div>
+
+      <!-- Preview State -->
+      <div id="preview-wrap">
+        <img id="preview-img" src="" alt="Preview" />
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="preview-file-name" id="preview-filename"></span>
+          <button class="change-btn" id="change-btn">Change image</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Action Buttons (Upload & Camera) -->
+    <div class="input-actions">
+      <button class="input-action-btn upload-btn" id="upload-action-btn">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/>
+        </svg>
+        <span>Upload Photo</span>
+      </button>
+
+      <button class="input-action-btn camera-btn" id="camera-action-btn">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574v9.176A2.25 2.25 0 0 0 4.5 21h15a2.25 2.25 0 0 0 2.25-2.25V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z"/>
+        </svg>
+        <span>Take Photo</span>
+      </button>
+    </div>
+
+    <!-- Hidden native inputs -->
+    <input type="file" id="file-input" accept="image/jpeg,image/jpg,image/png,image/webp" />
+    <input type="file" id="camera-input" accept="image/*" capture="environment" />
+  </section>
+
+  <!-- ══════════════════ ANALYZE CTA ══════════════════ -->
+  <div class="cta-wrap">
+    <button id="analyze-btn" disabled aria-label="Analyse banana ripeness">
+      <div class="btn-spinner" aria-hidden="true"></div>
+      <span class="btn-label">🍌 Analyze Ripeness & Quality</span>
+    </button>
+  </div>
+
+  <!-- ══════════════════ RESULTS DASHBOARD ══════════════════ -->
+  <section id="results-panel" aria-label="Analysis results">
+
+    <!-- 1. Annotated Detection View -->
+    <div>
+      <p class="section-label">Detection & Segmentation Map</p>
+      <div class="annotated-wrap">
+        <img id="annotated-img" src="" alt="Annotated detection" />
+        <div class="annotated-toolbar">
+          <button id="share-btn" class="share-btn" title="Share Report">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8m-4-6l-4-4-4 4m4-4v13"/>
+            </svg>
+            Share
+          </button>
+          <a id="download-btn" class="dl-btn" download="bananavision_result.png">
+            ↓ Download
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Ripeness Summary -->
+    <div>
+      <p class="section-label">Batch Ripeness Breakdown</p>
+      <div class="summary-grid" id="summary-grid"></div>
+    </div>
+
+    <!-- 3. Per-Banana Detail Cards -->
+    <div>
+      <p class="section-label">Banana Quality & Culinary Insights</p>
+      <div class="banana-grid" id="banana-cards"></div>
+
+      <!-- Empty state when 0 detected -->
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">
+          <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/>
+          </svg>
+        </div>
+        <p class="empty-title">No bananas detected</p>
+        <p class="empty-sub">Try capturing with clearer lighting or place the fruit closer to the lens.</p>
+        <button class="retry-btn" id="retry-btn">↩ Try another photo</button>
+      </div>
+    </div>
+
+    <!-- 4. Metadata & Performance Footer -->
+    <div class="proc-footer" id="proc-footer">
+      <div class="proc-item">⏱ Latency: <strong id="proc-time">—</strong> ms</div>
+      <div class="proc-dot"></div>
+      <div class="proc-item">Engine: <strong id="proc-mode">Mask R-CNN + MobileNetV2</strong></div>
+      <div class="proc-dot"></div>
+      <div class="proc-item">Fruits detected: <strong id="proc-count">—</strong></div>
+    </div>
+
+  </section>
+
+</div><!-- /container -->
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   BananaVision — Frontend Logic
+═══════════════════════════════════════════════════════════════════════════ */
+
+const API_BASE = '';
+
+const RIPENESS_COLORS = {
+  unripe  : { hex: '#00C851', emoji: '🟢', bg: 'rgba(0,200,81,0.12)',   border: 'rgba(0,200,81,0.4)'   },
+  ripe    : { hex: '#F5C518', emoji: '🟡', bg: 'rgba(245,197,24,0.12)', border: 'rgba(245,197,24,0.45)' },
+  overripe: { hex: '#FF8800', emoji: '🟠', bg: 'rgba(255,136,0,0.12)',  border: 'rgba(255,136,0,0.4)'  },
+  rotten  : { hex: '#CC0000', emoji: '🔴', bg: 'rgba(204,0,0,0.12)',    border: 'rgba(204,0,0,0.4)'    },
+};
+
+const LOADING_MESSAGES = [
+  'Detecting banana regions…',
+  'Segmenting individual fruits…',
+  'Classifying ripeness & sugar stages…',
+  'Compiling freshness advice…',
+];
+
+// ── DOM References ────────────────────────────────────────────────────────────
+const dropZone        = document.getElementById('drop-zone');
+const fileInput       = document.getElementById('file-input');
+const cameraInput     = document.getElementById('camera-input');
+const previewWrap     = document.getElementById('preview-wrap');
+const previewImg      = document.getElementById('preview-img');
+const previewFname    = document.getElementById('preview-filename');
+const uploadPH        = document.getElementById('upload-placeholder');
+const changeBtn       = document.getElementById('change-btn');
+const analyzeBtn      = document.getElementById('analyze-btn');
+const loadingOverlay  = document.getElementById('loading-overlay');
+const loadingText     = document.getElementById('loading-text');
+const resultsPanel    = document.getElementById('results-panel');
+const annotatedImg    = document.getElementById('annotated-img');
+const downloadBtn     = document.getElementById('download-btn');
+const shareBtn        = document.getElementById('share-btn');
+const summaryGrid     = document.getElementById('summary-grid');
+const bananaCards     = document.getElementById('banana-cards');
+const emptyState      = document.getElementById('empty-state');
+const retryBtn        = document.getElementById('retry-btn');
+const procTime        = document.getElementById('proc-time');
+const procCount       = document.getElementById('proc-count');
+const procMode        = document.getElementById('proc-mode');
+const deviceBadge     = document.getElementById('device-badge');
+const deviceLabel     = document.getElementById('device-label');
+const uploadActionBtn = document.getElementById('upload-action-btn');
+const cameraActionBtn = document.getElementById('camera-action-btn');
+
+// Camera Modal Refs
+const cameraModal     = document.getElementById('camera-modal');
+const cameraVideo     = document.getElementById('camera-video');
+const camCloseBtn     = document.getElementById('cam-close-btn');
+const camFlipBtn      = document.getElementById('cam-flip-btn');
+const camSnapBtn      = document.getElementById('cam-snap-btn');
+
+let selectedFile = null;
+let loadMsgTimer = null;
+let mediaStream  = null;
+let currentFacingMode = 'environment'; // default rear camera
+let lastAnalysisData = null;
+
+// ── Health Check ──────────────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const res = await fetch(`${API_BASE}/health`);
+    const data = await res.json();
+    const isGpu = data.device && data.device.toLowerCase().includes('cuda');
+    deviceBadge.className = 'device-badge ' + (isGpu ? 'gpu' : 'cpu');
+    deviceLabel.textContent = isGpu ? '⚡ GPU Engine' : '💻 CPU Mode';
+  } catch {
+    deviceLabel.textContent = '⚠ Server offline';
+  }
+}
+checkHealth();
+
+// ── Sample Preset Quick Test ──────────────────────────────────────────────────
+document.querySelectorAll('.sample-pill').forEach(pill => {
+  pill.addEventListener('click', async () => {
+    const src = pill.dataset.src;
+    const name = pill.dataset.name;
+    try {
+      showToast(`Loading demo: ${name}…`, 'success');
+      const res = await fetch(src);
+      const blob = await res.blob();
+      const file = new File([blob], `${name.toLowerCase().replace(/\s+/g, '_')}.jpg`, { type: blob.type || 'image/jpeg' });
+      handleFileSelect(file);
+      // Auto run analysis for instant gratification
+      setTimeout(() => runAnalysis(), 300);
+    } catch (err) {
+      showToast('Could not load sample image', 'error');
+    }
+  });
+});
+
+// ── Drop Zone & Action Handlers ───────────────────────────────────────────────
+dropZone.addEventListener('click', (e) => {
+  if (e.target === changeBtn) fileInput.click();
+  else if (!selectedFile) fileInput.click();
+});
+
+uploadActionBtn.addEventListener('click', () => fileInput.click());
+
+// Live Camera trigger
+cameraActionBtn.addEventListener('click', async () => {
+  // Try direct browser getUserMedia live viewfinder
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    startLiveCamera();
+  } else {
+    // Fallback to native capture input
+    cameraInput.click();
+  }
+});
+
+changeBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  fileInput.click();
+});
+
+dropZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropZone.classList.add('drag-over');
+});
+['dragleave','dragend'].forEach(ev =>
+  dropZone.addEventListener(ev, () => dropZone.classList.remove('drag-over'))
+);
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFileSelect(f);
+});
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) handleFileSelect(fileInput.files[0]);
+});
+cameraInput.addEventListener('change', () => {
+  if (cameraInput.files[0]) handleFileSelect(cameraInput.files[0]);
+});
+
+function handleFileSelect(file) {
+  const allowed = ['image/jpeg','image/jpg','image/png','image/webp'];
+  if (!allowed.includes(file.type)) {
+    showToast('Please upload a JPG, PNG or WEBP image', 'error');
+    return;
+  }
+  selectedFile = file;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    previewImg.src = e.target.result;
+    previewFname.textContent = file.name;
+    uploadPH.style.display = 'none';
+    previewWrap.classList.add('visible');
+    dropZone.classList.add('has-image');
+    analyzeBtn.disabled = false;
+    resultsPanel.classList.remove('visible');
+    emptyState.classList.remove('visible');
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Live Camera Stream ────────────────────────────────────────────────────────
+async function startLiveCamera() {
+  try {
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(t => t.stop());
+    }
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 960 } },
+      audio: false
+    });
+    cameraVideo.srcObject = mediaStream;
+    cameraModal.classList.add('visible');
+  } catch (err) {
+    console.warn('getUserMedia error, falling back to native file input:', err);
+    cameraInput.click();
+  }
+}
+
+function stopLiveCamera() {
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(t => t.stop());
+    mediaStream = null;
+  }
+  cameraModal.classList.remove('visible');
+}
+
+camCloseBtn.addEventListener('click', stopLiveCamera);
+
+camFlipBtn.addEventListener('click', () => {
+  currentFacingMode = (currentFacingMode === 'environment') ? 'user' : 'environment';
+  startLiveCamera();
+});
+
+camSnapBtn.addEventListener('click', () => {
+  if (!cameraVideo.videoWidth) return;
+  const canvas = document.createElement('canvas');
+  canvas.width = cameraVideo.videoWidth;
+  canvas.height = cameraVideo.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
+
+  canvas.toBlob((blob) => {
+    const file = new File([blob], `camera_snap_${Date.now()}.jpg`, { type: 'image/jpeg' });
+    stopLiveCamera();
+    handleFileSelect(file);
+    setTimeout(() => runAnalysis(), 200);
+  }, 'image/jpeg', 0.92);
+});
+
+// ── Analysis Pipeline Execution ───────────────────────────────────────────────
+analyzeBtn.addEventListener('click', runAnalysis);
+retryBtn.addEventListener('click', () => {
+  selectedFile = null;
+  fileInput.value = '';
+  previewImg.src = '';
+  uploadPH.style.display = '';
+  previewWrap.classList.remove('visible');
+  dropZone.classList.remove('has-image');
+  analyzeBtn.disabled = true;
+  resultsPanel.classList.remove('visible');
+  emptyState.classList.remove('visible');
+});
+
+async function runAnalysis() {
+  if (!selectedFile) return;
+
+  analyzeBtn.classList.add('loading');
+  analyzeBtn.disabled = true;
+  resultsPanel.classList.remove('visible');
+  emptyState.classList.remove('visible');
+  showLoadingOverlay();
+
+  const formData = new FormData();
+  formData.append('file', selectedFile);
+
+  try {
+    const res = await fetch(`${API_BASE}/analyze`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Analysis failed');
+    }
+
+    const data = await res.json();
+    lastAnalysisData = data;
+    hideLoadingOverlay();
+    renderResults(data);
+
+  } catch (err) {
+    hideLoadingOverlay();
+    showToast(`Error: ${err.message}`, 'error');
+  } finally {
+    analyzeBtn.classList.remove('loading');
+    analyzeBtn.disabled = false;
+  }
+}
+
+function showLoadingOverlay() {
+  loadingOverlay.classList.add('visible');
+  let idx = 0;
+  loadingText.textContent = LOADING_MESSAGES[0];
+  loadMsgTimer = setInterval(() => {
+    idx = (idx + 1) % LOADING_MESSAGES.length;
+    loadingText.style.opacity = '0';
+    setTimeout(() => {
+      loadingText.textContent = LOADING_MESSAGES[idx];
+      loadingText.style.opacity = '1';
+    }, 200);
+  }, 1600);
+}
+
+function hideLoadingOverlay() {
+  clearInterval(loadMsgTimer);
+  loadingOverlay.classList.remove('visible');
+}
+
+// ── Render Analysis Output ────────────────────────────────────────────────────
+function renderResults(data) {
+  const imgSrc = `data:image/png;base64,${data.annotated_image}`;
+  annotatedImg.src = imgSrc;
+  downloadBtn.href = imgSrc;
+
+  procTime.textContent  = data.processing_time_ms.toFixed(1);
+  procCount.textContent = data.num_detected;
+  procMode.textContent  = data.mode || 'Deep Learning (Mask R-CNN + MobileNetV2)';
+
+  // Summary breakdown
+  summaryGrid.innerHTML = '';
+  const maxCount = Math.max(...Object.values(data.summary));
+  const order = ['ripe','unripe','overripe','rotten'];
+  order.forEach(cls => {
+    const col   = RIPENESS_COLORS[cls];
+    const count = data.summary[cls] || 0;
+    const isTop = count === maxCount && count > 0;
+    const card  = document.createElement('div');
+    card.className = 'summary-card' + (isTop ? ' highlight' : '');
+    card.style.setProperty('--card-accent', col.hex);
+    card.innerHTML = `
+      <div class="summary-emoji">${col.emoji}</div>
+      <div class="summary-class">${cls}</div>
+      <div class="summary-count">${count}</div>
+    `;
+    summaryGrid.appendChild(card);
+  });
+
+  // Individual banana cards
+  bananaCards.innerHTML = '';
+  if (!data.results || data.results.length === 0) {
+    emptyState.classList.add('visible');
+  } else {
+    data.results.forEach((banana, i) => {
+      const col = RIPENESS_COLORS[banana.ripeness] || RIPENESS_COLORS.ripe;
+      const card = document.createElement('div');
+      card.className = 'banana-card';
+      card.style.setProperty('--card-accent', col.hex);
+
+      const insight = banana.insight || {};
+      const shelfLife = insight.shelf_life || '2–4 Days';
+      const storageTip = insight.storage_tip || 'Keep in cool dry place';
+      const bestUse = insight.best_use || 'Direct snacking';
+
+      const probBars = buildProbBars(banana.all_probs, banana.ripeness);
+
+      card.innerHTML = `
+        <div class="banana-crop-wrap">
+          <img class="banana-crop-img" src="data:image/png;base64,${banana.crop_image}" alt="Crop ${banana.banana_id}" loading="lazy" />
+        </div>
+        <div class="banana-title">
+          <span>Banana #${banana.banana_id}</span>
+          <span class="ripeness-badge" style="background:${col.bg};border:1px solid ${col.border};color:${col.hex}">
+            ${col.emoji} ${banana.ripeness}
+          </span>
+        </div>
+        <div class="confidence-row">
+          <span class="confidence-val">${(banana.confidence * 100).toFixed(1)}</span>
+          <span class="confidence-pct">% confidence</span>
+        </div>
+
+        <div class="insight-box">
+          <div class="insight-row">
+            <span class="insight-label">Shelf Life:</span>
+            <span class="insight-val" style="color:${col.hex}">${shelfLife}</span>
+          </div>
+          <div class="insight-row">
+            <span class="insight-label">Best For:</span>
+            <span class="insight-val">${bestUse.split(',')[0]}</span>
+          </div>
+          <p class="insight-tip">💡 ${storageTip}</p>
+        </div>
+
+        ${probBars}
+      `;
+      bananaCards.appendChild(card);
+
+      // Animate probability bars
+      setTimeout(() => {
+        card.querySelectorAll('.bar-fill').forEach(fill => {
+          fill.style.width = fill.dataset.target + '%';
+        });
+      }, 250 + i * 60);
+    });
+    emptyState.classList.remove('visible');
+  }
+
+  resultsPanel.classList.add('visible');
+  resultsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function buildProbBars(allProbs, predictedClass) {
+  const order = ['ripe','unripe','overripe','rotten'];
+  let html = `<div class="prob-chart"><p class="prob-label">Class Probabilities</p>`;
+  order.forEach(cls => {
+    const pct = ((allProbs[cls] || 0) * 100);
+    const col = RIPENESS_COLORS[cls];
+    const isActive = cls === predictedClass;
+    html += `
+      <div class="bar-row">
+        <span class="bar-class-name">${cls}</span>
+        <div class="bar-track">
+          <div class="bar-fill" data-target="${pct.toFixed(1)}"
+               style="background:${isActive ? col.hex : 'rgba(255,255,255,0.18)'};width:0%"></div>
+        </div>
+        <span class="bar-pct">${pct.toFixed(0)}%</span>
+      </div>
+    `;
+  });
+  html += '</div>';
+  return html;
+}
+
+// ── Mobile Web Share API ──────────────────────────────────────────────────────
+shareBtn.addEventListener('click', async () => {
+  if (!lastAnalysisData) return;
+  const summaryTxt = `BananaVision Ripeness Report: Detected ${lastAnalysisData.num_detected} bananas (Ripe: ${lastAnalysisData.summary.ripe}, Unripe: ${lastAnalysisData.summary.unripe}, Overripe: ${lastAnalysisData.summary.overripe}).`;
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: 'BananaVision AI Quality Report',
+        text: summaryTxt,
+        url: window.location.href,
+      });
+    } catch (e) {
+      console.log('Share canceled/failed');
+    }
+  } else {
+    navigator.clipboard.writeText(summaryTxt);
+    showToast('Report summary copied to clipboard!', 'success');
+  }
+});
+
+// ── Toast Notification ────────────────────────────────────────────────────────
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 5000);
+}
+</script>
+</body>
+</html>
