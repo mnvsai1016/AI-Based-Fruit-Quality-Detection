@@ -24,45 +24,52 @@ from contextlib import asynccontextmanager
 import pipeline as pl
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
+def _find_static_dir():
+    candidates = [
+        Path(__file__).parent / "static",
+        Path(__file__).parent.parent / "Desing_end" / "app" / "static",
+        Path.cwd() / "Desing_end" / "app" / "static",
+        Path.cwd() / "static",
+        Path.cwd() / "public",
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return Path(__file__).parent / "static"
+
 BASE_DIR    = Path(__file__).parent
 MODELS_DIR  = BASE_DIR / "models"
-STATIC_DIR  = BASE_DIR / "static"
+STATIC_DIR  = _find_static_dir()
 
 SEG_MODEL_PATH      = MODELS_DIR / "banana_maskrcnn_finetuned.pth"
 RIPENESS_MODEL_PATH = MODELS_DIR / "banana_mobilenetv2_best.pth"
 
 
-# ── Lifespan (startup / shutdown) ─────────────────────────────────────────────
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Load models once at startup and store them in app.state."""
-    print("[startup] Loading models …")
-    try:
-        app.state.device = pl.DEVICE
-        app.state.seg_model      = pl.load_segmentation_model(
-            str(SEG_MODEL_PATH), pl.DEVICE
-        )
-        app.state.ripeness_model = pl.load_ripeness_model(
-            str(RIPENESS_MODEL_PATH), pl.DEVICE
-        )
-        app.state.models_loaded = True
-        print(f"[startup] Models loaded on {pl.DEVICE}")
-    except Exception as exc:
-        print(f"[startup] WARNING — could not load models: {exc}")
-        app.state.seg_model      = None
-        app.state.ripeness_model = None
-        app.state.models_loaded  = False
-    yield
-    # shutdown: nothing to clean up
-
-
-# ── App ───────────────────────────────────────────────────────────────────────
+# ── App & State Initialization ────────────────────────────────────────────────
 app = FastAPI(
     title="AI-Based Fruit Quality Detection API (BananaVision)",
     description="Fruit Quality & Ripeness Detection system, currently specialized and fine-tuned for Bananas.",
-    version="1.0.0",
-    lifespan=lifespan
+    version="1.0.0"
 )
+
+# Safe default module-level state (ensures serverless never throws AttributeError)
+app.state.device = getattr(pl, "DEVICE", "cpu")
+app.state.seg_model = None
+app.state.ripeness_model = None
+app.state.models_loaded = False
+
+def _try_load_models():
+    if getattr(pl, "TORCH_AVAILABLE", False) and SEG_MODEL_PATH.exists() and RIPENESS_MODEL_PATH.exists():
+        try:
+            app.state.seg_model = pl.load_segmentation_model(str(SEG_MODEL_PATH), pl.DEVICE)
+            app.state.ripeness_model = pl.load_ripeness_model(str(RIPENESS_MODEL_PATH), pl.DEVICE)
+            app.state.models_loaded = True
+            print(f"[startup] Models loaded on {pl.DEVICE}")
+        except Exception as exc:
+            print(f"[startup] Could not load models: {exc}")
+            app.state.models_loaded = False
+
+_try_load_models()
 
 app.add_middleware(
     CORSMiddleware,
@@ -71,8 +78,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve static files
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+# Safe static file mount
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR), check_dir=False), name="static")
 
 
 # ── Utility ───────────────────────────────────────────────────────────────────
@@ -90,21 +98,28 @@ def _pil_to_base64(pil_img: Image.Image) -> str:
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+from fastapi.responses import HTMLResponse
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def serve_index():
     index_path = STATIC_DIR / "index.html"
     if not index_path.exists():
-        raise HTTPException(status_code=404, detail="Frontend not found")
-    return FileResponse(str(index_path))
+        for root, dirs, files in os.walk(Path.cwd()):
+            if "index.html" in files:
+                index_path = Path(root) / "index.html"
+                break
+    if index_path.exists():
+        with open(index_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse("<h1>BananaVision API is running</h1>", status_code=200)
 
 
 @app.get("/health")
 async def health():
     return {
         "status"      : "ok",
-        "device"      : str(app.state.device),
-        "models_loaded": app.state.models_loaded,
+        "device"      : str(getattr(app.state, "device", "cpu")),
+        "models_loaded": bool(getattr(app.state, "models_loaded", False)),
     }
 
 
