@@ -1,24 +1,27 @@
 {
-  "rewrites": [
+  "version": 2,
+  "builds": [
     {
-      "source": "/static/samples/(.*)",
-      "destination": "/samples/$1"
+      "src": "api/index.py",
+      "use": "@vercel/python"
     },
     {
-      "source": "/analyze",
-      "destination": "/api/index.py"
+      "src": "public/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/static/samples/(.*)",
+      "dest": "/public/static/samples/$1"
     },
     {
-      "source": "/health",
-      "destination": "/api/index.py"
+      "src": "/samples/(.*)",
+      "dest": "/public/samples/$1"
     },
     {
-      "source": "/samples",
-      "destination": "/api/index.py"
-    },
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/index.py"
+      "src": "/(.*)",
+      "dest": "/api/index.py"
     }
   ]
 }
