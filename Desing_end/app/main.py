@@ -11,7 +11,10 @@ import traceback
 from collections import Counter
 from pathlib import Path
 
-import cv2
+try:
+    import cv2
+except Exception:
+    cv2 = None
 import numpy as np
 from PIL import Image
 
@@ -86,8 +89,16 @@ if STATIC_DIR.exists():
 # ── Utility ───────────────────────────────────────────────────────────────────
 def _img_to_base64(img_rgb: np.ndarray) -> str:
     """Encode an RGB numpy array as a base64 PNG string."""
-    _, buf = cv2.imencode(".png", cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR))
-    return base64.b64encode(buf.tobytes()).decode("utf-8")
+    if cv2 is not None:
+        try:
+            _, buf = cv2.imencode(".png", cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR))
+            return base64.b64encode(buf.tobytes()).decode("utf-8")
+        except Exception:
+            pass
+    pil_img = Image.fromarray(img_rgb.astype(np.uint8))
+    buf = io.BytesIO()
+    pil_img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
 def _pil_to_base64(pil_img: Image.Image) -> str:

@@ -98,7 +98,7 @@ except ImportError:
 # Model loaders
 # ─────────────────────────────────────────────────────────────────────────────
 
-def load_segmentation_model(path: str, device: torch.device):
+def load_segmentation_model(path: str, device=None):
     """Load fine-tuned Mask R-CNN (2 classes: background + banana)."""
     model = torchvision.models.detection.maskrcnn_resnet50_fpn(weights=None)
 
@@ -127,7 +127,7 @@ def load_segmentation_model(path: str, device: torch.device):
     return model
 
 
-def load_ripeness_model(path: str, device: torch.device, num_classes: int = 4):
+def load_ripeness_model(path: str, device=None, num_classes: int = 4):
     """Load fine-tuned MobileNetV2 ripeness classifier."""
     model = models.mobilenet_v2(weights=None)
     num_features = model.classifier[1].in_features
@@ -162,7 +162,7 @@ def auto_correct_exposure(pil_img: Image.Image):
     return pil_img, tag
 
 
-def predict_ripeness_with_tta(crop_pil: Image.Image, model, device: torch.device):
+def predict_ripeness_with_tta(crop_pil: Image.Image, model, device=None):
     """
     Average softmax probabilities across 5 TTA variants.
     Returns (pred_idx, confidence, all_probs[4]).
@@ -263,7 +263,7 @@ def run_banana_pipeline(
     image_path: str,
     seg_model,
     ripeness_model,
-    device: torch.device,
+    device=None,
     seg_threshold: float = SEG_SCORE_THRESHOLD,
     crop_padding: int = CROP_PADDING,
 ) -> dict:
@@ -516,22 +516,30 @@ def run_cv_fallback_pipeline(image_path: str, crop_padding: int = CROP_PADDING) 
         g = image_rgb[:, :, 1].astype(float)
         b = image_rgb[:, :, 2].astype(float)
 
-        green_mask = (g > r + 10) & (g > b + 10)
-        yellow_mask = (r > 130) & (g > 110) & (b < 100)
-        brown_mask = (r > 70) & (r < 150) & (g > 40) & (g < 110) & (b < 70)
-        rotten_mask = (r < 60) & (g < 60) & (b < 60)
+        fg_mask = (np.maximum(np.maximum(r, g), b) > 40) & ~((r > 240) & (g > 240) & (b > 240))
+        if np.sum(fg_mask) > 100:
+            r_fg = r[fg_mask]
+            g_fg = g[fg_mask]
+            b_fg = b[fg_mask]
+        else:
+            r_fg, g_fg, b_fg = r.ravel(), g.ravel(), b.ravel()
 
-        total_banana_px = np.sum(green_mask | yellow_mask | brown_mask | rotten_mask) + 1e-6
+        green_mask = (g_fg > r_fg * 1.05) & (g_fg > b_fg * 1.1)
+        yellow_mask = (r_fg > 170) & (g_fg > 150) & (b_fg < 120)
+        brown_mask = (r_fg > 80) & (g_fg <= 150) & (r_fg > g_fg * 1.1) & (b_fg < 100)
+        rotten_mask = (r_fg < 50) & (g_fg < 50) & (b_fg < 50)
+
+        total_banana_px = len(r_fg) + 1e-6
         green_ratio = np.sum(green_mask) / total_banana_px
         yellow_ratio = np.sum(yellow_mask) / total_banana_px
         brown_ratio = np.sum(brown_mask) / total_banana_px
         rotten_ratio = np.sum(rotten_mask) / total_banana_px
 
         raw_scores = np.array([
-            brown_ratio * 1.6 + 0.05,
-            yellow_ratio * 1.8 + 0.1,
-            rotten_ratio * 2.0 + 0.02,
-            green_ratio * 1.9 + 0.05
+            brown_ratio * 2.2 + 0.05,
+            yellow_ratio * 2.2 + 0.05,
+            rotten_ratio * 2.5 + 0.02,
+            green_ratio * 2.5 + 0.05
         ], dtype=float)
         probs = raw_scores / (raw_scores.sum() + 1e-6)
 

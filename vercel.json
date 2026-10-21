@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/static/samples/(.*)",
+      "destination": "/samples/$1"
+    },
+    {
       "source": "/analyze",
       "destination": "/api/index.py"
     },
