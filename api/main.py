@@ -3,6 +3,7 @@ main.py — FastAPI backend for BananaVision
 """
 
 import os
+import sys
 import io
 import base64
 import time
