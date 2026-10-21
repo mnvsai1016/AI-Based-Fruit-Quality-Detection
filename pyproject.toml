@@ -14,3 +14,9 @@ dependencies = [
 
 [tool.vercel]
 entrypoint = "api/index.py"
+
+[tool.uv]
+environments = [
+    "sys_platform == 'linux'",
+    "sys_platform == 'win32'"
+]
