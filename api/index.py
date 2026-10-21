@@ -135,6 +135,7 @@ async def serve_index():
 
 
 @app.get("/health")
+@app.get("/api/health")
 async def health():
     return {
         "status"      : "ok",
@@ -144,6 +145,7 @@ async def health():
 
 
 @app.get("/samples")
+@app.get("/api/samples")
 async def list_samples():
     samples_dir = STATIC_DIR / "samples"
     if not samples_dir.exists():
@@ -167,6 +169,7 @@ async def list_samples():
 
 
 @app.post("/analyze")
+@app.post("/api/analyze")
 async def analyze(file: UploadFile = File(...)):
     """
     Accepts a JPEG or PNG image, runs the two-stage pipeline,
