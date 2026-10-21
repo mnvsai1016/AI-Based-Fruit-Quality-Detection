@@ -29,11 +29,12 @@ import pipeline as pl
 # ── Paths ─────────────────────────────────────────────────────────────────────
 def _find_static_dir():
     candidates = [
+        Path(__file__).parent.parent.parent / "public",
+        Path.cwd() / "public",
         Path(__file__).parent / "static",
-        Path(__file__).parent.parent / "Desing_end" / "app" / "static",
+        Path(__file__).parent.parent / "app" / "static",
         Path.cwd() / "Desing_end" / "app" / "static",
         Path.cwd() / "static",
-        Path.cwd() / "public",
     ]
     for c in candidates:
         if c.exists():

@@ -1,22 +1,14 @@
 import os
 import sys
-import traceback
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
-app_dir = ROOT_DIR / "Desing_end" / "app"
-cwd_app_dir = Path.cwd() / "Desing_end" / "app"
+# Add api directory to sys.path so local imports work seamlessly in all serverless environments
+API_DIR = Path(__file__).resolve().parent
+if str(API_DIR) not in sys.path:
+    sys.path.insert(0, str(API_DIR))
 
-for p in [str(app_dir), str(cwd_app_dir), str(ROOT_DIR)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
+# Import the FastAPI application from api/main.py
+from main import app
 
-try:
-    from main import app
-except Exception:
-    try:
-        from Desing_end.app.main import app
-    except Exception as exc:
-        traceback.print_exc()
-        raise exc
-
+# Expose both app and handler for universal Vercel Python runtime compatibility
+handler = app
